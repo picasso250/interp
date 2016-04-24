@@ -241,11 +241,7 @@ env_t *env_dup(env_t *env)
 	new_env->data = NULL;
 	if (new_env->size) {
 		new_env->data = malloc(sizeof(env_entry_t)*new_env->size);
-		// assert(new_env->data != NULL);
-		if (new_env->data == 0) {
-			perror("new_env malloc fail");
-			exit(1);
-		}
+		assert(new_env->data != NULL);
 		memcpy(new_env->data, env->data,
 			sizeof(env_entry_t) * env->size);
 	}
@@ -267,9 +263,9 @@ env_t *ext_env(char *name, expr_t *e, env_t *env)
 }
 expr_t *lookup(char *name, env_t *env)
 {
-	printf("lookup in (%d)\n", env->size);
-	for (int i = env->size - 1; i >= 0; ++i) {
-		printf("---- lookup %s\n", name);
+	// printf("lookup %s in (%d)\n", name, env->size);
+	for (int i = env->size - 1; i >= 0; --i) {
+		// printf("---- lookup %s <=> %s\n", name, env->data[i].name);
 		if (strcmp(name, env->data[i].name) == 0) {
 			return env->data[i].value;
 		}
@@ -290,9 +286,7 @@ expr_t *interp(expr_t *e, env_t *env)
 	int v;
 	switch (e->type) {
 		case NAME:
-			printf("name of '%s'\n", e->str);
-			printf("env(%ld)\n", env);
-			printf("env(%ld) size %d\n", env, env->size);
+			// printf("name of '%s'\n", e->str);
 			ret = lookup(e->str, env);
 			if (!ret) {
 				printf("undefined variable %s\n", e->str);
@@ -300,27 +294,24 @@ expr_t *interp(expr_t *e, env_t *env)
 			}
 			return ret;
 		case INT:
-			printf("int %d\n", e->ivalue);
+			// printf("int %d\n", e->ivalue);
 			return e;
 		case LAMBDA:
-			printf("lambda (%s)\n", e->name->str);
+			// printf("lambda (%s)\n", e->name->str);
 			e->env = env_dup(env);
-			printf("lambda env size (%d)\n", e->env->size);
 			return e;
 		case LET:
-			printf("let (%s)\n", e->name->str);
+			// printf("let (%s)\n", e->name->str);
 			v1 = interp(e->value, env);
 			new_env = ext_env(e->name->str, v1, env);
 			return interp(e->body, new_env);
 		case FUNC_CALL:
-			printf("FUNC_CALL ====\n");
+			// printf("FUNC_CALL ====\n");
 			if (e->value2) {
-				printf("v1:%d, v2:%d in env(%ld)\n",
-					e->value->type, e->value2->type, env);
+				// printf("v1:%d, v2:%d in env(%ld)\n",
+				// 	e->value->type, e->value2->type, env);
 				v1 = interp(e->value, env);
 				v2 = interp(e->value2, env);
-				printf("do name (%d)\n", e->func->type);
-				// printf("do name (%d) %c\n", e->func->type, e->func->name);
 				ret = make_expr(INT);
 				assert(e->func->type == NAME);
 				switch (e->func->str[0]) {
@@ -340,11 +331,10 @@ expr_t *interp(expr_t *e, env_t *env)
 				ret->ivalue = v;
 				return ret;
 			}
-			printf("FUNC_CALL (:%d :%d) \n", e->func->type, e->value->type);
+			// printf("FUNC_CALL (:%d :%d) \n", e->func->type, e->value->type);
 			v1 = interp(e->func, env);
 			v2 = interp(e->value, env);
 			new_env = ext_env(v1->name->str, v2, v1->env);
-			printf("new_env(%ld)\n", new_env);
 			return interp(v1->body, new_env);
 	}
 }
@@ -353,7 +343,6 @@ expr_t *r2(expr_t *e)
 	env_t env0;
 	env0.size = 0;
 	env0.data = NULL;
-	printf("env0(%ld)\n", &env0);
 	return interp(e, &env0);
 }
 
