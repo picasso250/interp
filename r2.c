@@ -53,11 +53,11 @@ typedef struct _list_t list_t;
 
 // ==== lexer ====
 
-char *readword(char **codep)
+char *readword(char const **codep)
 {
 	char *str = malloc(100);
 	int i = 0;
-	char *code = *codep;
+	const char *code = *codep;
 	for (;code[i] && code[i] != ')' && !isspace(code[i]); i++) {
 		str[i] = code[i];
 	}
@@ -65,9 +65,9 @@ char *readword(char **codep)
 	*codep = code + i;
 	return realloc(str, i+1);
 }
-char *lexer_atom(char **codep)
+char *lexer_atom(char const **codep)
 {
-	char *code = *codep;
+	const char *code = *codep;
 	while (*code && isspace(*code)) code++;
 	char *str;
 	str = readword(&code);
@@ -75,9 +75,9 @@ char *lexer_atom(char **codep)
 	*codep = code;
 	return str;
 }
-list_t *lexer_list(char **codep, list_t *list)
+list_t *lexer_list(char const **codep, list_t *list)
 {
-	char *code = *codep;
+	const char *code = *codep;
 	while (*code && isspace(*code)) code++;
 	// printf("lexer_list '%s'\n", code);
 	if (code[0] != '(') {
@@ -106,7 +106,7 @@ list_t *lexer_list(char **codep, list_t *list)
 	list->list = items;
 	*codep = code;
 }
-list_t *lexer(char *code)
+list_t *lexer(const char *code)
 {
 	list_t *list = malloc(sizeof(list_t));
 	lexer_list(&code, list);
@@ -348,52 +348,47 @@ expr_t *r2(expr_t *e)
 
 int main(int argc, char const *argv[])
 {
-	char *code;
-	// ----- examples -----
-	code = "(+ 1 2)";
+	const char *code;
 	list_t *list;
 	expr_t *e;
+	if (argc >= 2) {
+		code = argv[1];
+		list = lexer(code);
+		printf("%s ==> ", code);
+		print_lexer_tree(list);
+		e = parser(list);
+		print_ast(e);
+		printf("%s => %d\n", code, r2(e)->ivalue);
+		return 0;
+	}
+	// ----- examples -----
+	code = "(+ 1 2)";
 	list = lexer(code);
-	printf("%s ==> ", code);
-	print_lexer_tree(list);
 	e = parser(list);
-	print_ast(e);
 	printf("%s => %d\n", code, r2(e)->ivalue);
 	// => 3
 
 	code = "(* 2 3)";
 	list = lexer(code);
-	printf("%s => %d\n", code, list->size);
-	print_lexer_tree(list);
 	e = parser(list);
-	print_ast(e);
 	printf("%s => %d\n", code, r2(e)->ivalue);
 	// => 6
 
 	code = "(* 2 (+ 3 4))";
 	list = lexer(code);
-	// printf("%s => ", code);
-	// print_lexer_tree(list);
 	e = parser(list);
-	// print_ast(e);
 	printf("%s => %d\n", code, r2(e)->ivalue);
 	// => 14
 
 	code = "(* (+ 1 2) (+ 3 4))";
 	list = lexer(code);
-	// printf("%s => ", code);
-	// print_lexer_tree(list);
 	e = parser(list);
-	// print_ast(e);
 	printf("%s => %d\n", code, r2(e)->ivalue);
 	// => 21
 
 	code = "((lambda (x) (* 2 x)) 3)";
 	list = lexer(code);
-	printf("%s ==> ", code);
-	print_lexer_tree(list);
 	e = parser(list);
-	print_ast(e);
 	printf("%s => %d\n", code, r2(e)->ivalue);
 	// => 6
 
@@ -401,10 +396,7 @@ int main(int argc, char const *argv[])
 			" (let ((f (lambda (y) (* x y))))"
 			" (f 3)))";
 	list = lexer(code);
-	printf("%s => ", code);
-	print_lexer_tree(list);
 	e = parser(list);
-	print_ast(e);
 	printf("%s => %d\n", code, r2(e)->ivalue);
 	// => 6
 
