@@ -2,23 +2,29 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+// end is the end of current expression
 int calc_iter(char *code, char **end)
 {
-	char buf[100];
+	char numbuf[100];
 	if (code[0] != '(') {
+		// we are reading a number
 		int i = 0;
 		for (; code[i] && isdigit(code[i]); i++) {
-			buf[i] = code[i];
+			numbuf[i] = code[i];
 		}
-		buf[i] = 0;
+		numbuf[i] = 0;
 		*end = code + i;
-		return atoi(buf);
+		return atoi(numbuf);
 	}
 	int v1, v2;
 	char *end1, *end2;
+	// skip '(+ ', so code + 3
 	v1 = calc_iter(code+3, &end1);
+	// skip the space between 2 expressions
 	v2 = calc_iter(end1+1, &end2);
+	// skip ')'
 	*end = end2 + 1;
+	// see the operator
 	switch(code[1]) {
 		case '+':
 			return v1 + v2;

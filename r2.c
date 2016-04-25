@@ -9,6 +9,7 @@
 #define LAMBDA    2
 #define LET       3
 #define NAME      4
+#define ARITH     5
 
 struct _env_entry_t
 {
@@ -26,12 +27,13 @@ typedef struct _env_t env_t;
 // function call: (func value)
 // lambda: (lambda (name) body)
 // let: (let (name value) body)
+// arithmetic: (name value value2)
 struct _expr_t
 {
-	// 0 function call, 1 int, 2 lambda, 3 let, 4 name, 5 value
+	// 0 function call, 1 int, 2 lambda, 3 let, 4 name, 5 value, 6 arithmetic
 	int type;
 	int ivalue; // for int
-	char *str; // for name
+	char *str;  // for name
 
 	struct _expr_t *name;
 	struct _expr_t *func;
@@ -182,16 +184,19 @@ expr_t *parser(list_t *list)
 			ret->body = parser(list->list + 2);
 			return ret;
 		}
+		char op = first.atom[0];
+		if (op == '+' || op == '-' || op == '*' || op == '/') {
+			ret->type = ARITH;
+			ret->func = parser(list->list);
+			ret->value = parser(list->list + 1);
+			ret->value2 = parser(list->list + 2);
+			return ret;
+		}
 	}
 	// printf("FUNC_CALL (%d)\n", list->size);
 	ret->type = FUNC_CALL;
 	ret->func = parser(list->list);
 	ret->value = parser(list->list + 1);
-	if (list->size >= 3) {
-		ret->value2 = parser(list->list + 2);
-	} else {
-		ret->value2 = NULL;
-	}
 	return ret;
 }
 void print_ast(expr_t *e)
@@ -220,10 +225,15 @@ void print_ast(expr_t *e)
 			print_ast(e->func);
 			printf(" ");
 			print_ast(e->value);
-			if (e->value2) {
-				printf(" ");
-				print_ast(e->value2);
-			}
+			printf(")\n");
+			break;
+		case ARITH:
+			printf("AR(");
+			print_ast(e->func);
+			printf(" ");
+			print_ast(e->value);
+			printf(" ");
+			print_ast(e->value2);
 			printf(")\n");
 			break;
 	}
@@ -234,7 +244,6 @@ void print_ast(expr_t *e)
 // return new env
 env_t *env_dup(env_t *env)
 {
-	// printf("env_dup\n");
 	env_t *new_env = malloc(sizeof(env_t));
 	assert(new_env != NULL);
 	new_env->size = env->size;
@@ -249,23 +258,18 @@ env_t *env_dup(env_t *env)
 }
 env_t *ext_env(char *name, expr_t *e, env_t *env)
 {
-	// printf("ext_env %s (%d)\n", name, env->size);
 	env_t *new_env = env_dup(env);
 	int size = sizeof(env_entry_t) * (new_env->size+1);
 	new_env->data = new_env->data ?
 		realloc(new_env->data, size) : malloc(size);
 	assert(new_env->data != NULL);
-	// printf("assign (%d) %s=?\n", new_env->size, name);
 	new_env->data[new_env->size].name = name;
 	new_env->data[new_env->size].value = e;
 	new_env->size++;
-	// printf("new size %d\n", new_env->size);
 }
 expr_t *lookup(char *name, env_t *env)
 {
-	// printf("lookup %s in (%d)\n", name, env->size);
 	for (int i = env->size - 1; i >= 0; --i) {
-		// printf("---- lookup %s <=> %s\n", name, env->data[i].name);
 		if (strcmp(name, env->data[i].name) == 0) {
 			return env->data[i].value;
 		}
@@ -305,32 +309,30 @@ expr_t *interp(expr_t *e, env_t *env)
 			v1 = interp(e->value, env);
 			new_env = ext_env(e->name->str, v1, env);
 			return interp(e->body, new_env);
-		case FUNC_CALL:
-			// printf("FUNC_CALL ====\n");
-			if (e->value2) {
-				// printf("v1:%d, v2:%d in env(%ld)\n",
-				// 	e->value->type, e->value2->type, env);
-				v1 = interp(e->value, env);
-				v2 = interp(e->value2, env);
-				ret = make_expr(INT);
-				assert(e->func->type == NAME);
-				switch (e->func->str[0]) {
-					case '+':
-						v = v1->ivalue + v2->ivalue;
-						break;
-					case '-':
-						v = v1->ivalue - v2->ivalue;
-						break;
-					case '*':
-						v = v1->ivalue * v2->ivalue;
-						break;
-					case '/':
-						v = v1->ivalue / v2->ivalue;
-						break;
-				}
-				ret->ivalue = v;
-				return ret;
+		case ARITH:
+			// printf("v1:%d, v2:%d in env(%ld)\n",
+			// 	e->value->type, e->value2->type, env);
+			v1 = interp(e->value, env);
+			v2 = interp(e->value2, env);
+			ret = make_expr(INT);
+			assert(e->func->type == NAME);
+			switch (e->func->str[0]) {
+				case '+':
+					v = v1->ivalue + v2->ivalue;
+					break;
+				case '-':
+					v = v1->ivalue - v2->ivalue;
+					break;
+				case '*':
+					v = v1->ivalue * v2->ivalue;
+					break;
+				case '/':
+					v = v1->ivalue / v2->ivalue;
+					break;
 			}
+			ret->ivalue = v;
+			return ret;
+		case FUNC_CALL:
 			// printf("FUNC_CALL (:%d :%d) \n", e->func->type, e->value->type);
 			v1 = interp(e->func, env);
 			v2 = interp(e->value, env);
