@@ -1,0 +1,40 @@
+1
+1 + 2
+2 * 3
+2 * (3 + 4)
+(1 + 2) * (3 + 4)
+
+(\ x . 2 * x) 3
+
+x : 2
+f : \ y . x * y
+f 3
+
+x : 2
+f : \ y . x * y
+x:4
+f 3
+
+fact : \n. cond (
+	(n=0)? 1
+	else?  n*(fact(n-1))
+)
+fact 5
+
+fib : \n. cond (
+	(n<2)? n
+	else?  (fib(n-1)) + (fib(n-2))
+)
+fib 9
+
+even : \n. cond (
+	(n=0)? true
+	(n=1)? false
+	else?  odd (n-1)
+)
+odd :  \n. cond (
+	(n=0)? false
+	(n=1)? true
+	else?  even(n-1)
+)
+even 42
