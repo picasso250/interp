@@ -15,6 +15,7 @@ enum EXPR {
 	INT,
 	LAMBDA,
 	LET,
+	DEFINE,
 	NAME,
 	ARITH,
 	COND,
@@ -29,7 +30,9 @@ struct env_t
 	string name;
 	expr_t *value;
 	env_t *parent;
+
 	env_t():parent(NULL),value(NULL) {}
+
 	expr_t *lookup(string name) {
 		assert(parent != this);
 		// cout<<"lookup "<<name<<", compare "<<this->name<<endl;
@@ -68,7 +71,7 @@ struct expr_t
 
 	env_t *env; // only for lambda
 
-	vector<pair<expr_t,expr_t>> condpair; // only for cond
+	vector<pair<expr_t,expr_t>> pairs; // for cond and let
 
 	expr_t() {}
 	expr_t(int type)
@@ -201,13 +204,12 @@ expr_t *parser(list_t list)
 		if (first.is_atom && first.atom == "cond") {
 			assert(!second.is_atom);
 			ret->type = EXPR::COND;
-			for (auto t : second.list)
-			{
+			for (auto t : second.list) {
 				auto c = parser(t.list[0]);
-				// :
+				// c ? r
 				t.list.erase(t.list.begin(), t.list.begin()+2);
 				auto r = parser(t);
-				ret->condpair.push_back(make_pair(*c, *r));
+				ret->pairs.push_back(make_pair(*c, *r));
 				delete c; delete r;
 			}
 			return ret;
@@ -220,10 +222,36 @@ expr_t *parser(list_t list)
 	} else if (size >= 3) {
 		list_t first = list.list[0];
 		list_t second = list.list[1];
+		if (first.is_atom) {
+			if (first.atom == "\\") {
+				// cout<<"lambda"<<endl;
+				ret->type = EXPR::LAMBDA;
+				ret->name = make_name(list.list[1].atom);
+				// printf("name is %s\n", ret->name.str);
+				list.list.erase(list.list.begin(), list.list.begin()+3);
+				ret->body = parser(list);
+				return ret;
+			}
+			if (first.atom == "let") {
+				ret->type = EXPR::LET;
+				for (auto t : second.list) {
+					assert(t.list[0].is_atom);
+					auto a = make_name(t.list[0].atom);
+					// a : e
+					t.list.erase(t.list.begin(), t.list.begin()+2);
+					auto e = parser(t);
+					ret->pairs.push_back(make_pair(*a, *e));
+					delete a; delete e;
+				}
+				list.list.erase(list.list.begin(), list.list.begin()+2);
+				ret->body = parser(list);
+				return ret;
+			}
+		}
 		if (second.is_atom) {
 			if (second.atom == ":") {
 				// cout<<"="<<"LET"<<endl;
-				ret->type = EXPR::LET;
+				ret->type = EXPR::DEFINE;
 				ret->name = make_name(list.list[0].atom);
 				list.list.erase(list.list.begin(), list.list.begin()+2);
 				ret->value = parser(list);
@@ -248,15 +276,7 @@ expr_t *parser(list_t list)
 
 			}
 		}
-		if (first.is_atom && first.atom == "\\") {
-			// cout<<"lambda"<<endl;
-			ret->type = EXPR::LAMBDA;
-			ret->name = make_name(list.list[1].atom);
-			// printf("name is %s\n", ret->name.str);
-			list.list.erase(list.list.begin(), list.list.begin()+3);
-			ret->body = parser(list);
-			return ret;
-		}
+		
 	}
 	
 	return ret;
@@ -278,9 +298,21 @@ void print_ast(expr_t &e)
 			print_ast(*e.body);
 			printf(")\n");
 			break;
-		case EXPR::LET:
-			printf("LT(%s ", e.name->str.c_str());
+		case EXPR::DEFINE:
+			printf("DF(%s ", e.name->str.c_str());
 			print_ast(*e.value);
+			printf(")\n");
+			break;
+		case EXPR::LET:
+			printf("LT(\n");
+			for (auto p : e.pairs) {
+				printf("\t(");
+				print_ast(p.first);
+				printf(":\t");
+				print_ast(p.second);
+				printf(")\n");
+			}
+			print_ast(*e.body);
 			printf(")\n");
 			break;
 		case EXPR::FUNC_CALL:
@@ -310,7 +342,7 @@ void print_ast(expr_t &e)
 			break;
 		case EXPR::COND:
 			printf("CD(\n");
-			for (auto cp : e.condpair) {
+			for (auto cp : e.pairs) {
 				print_ast(cp.first);
 				printf("?\t");
 				print_ast(cp.second);
@@ -335,6 +367,7 @@ expr_t *interp(expr_t *e, env_t *env)
 			// printf("name of '%s' in %lu\n", e->str.c_str(), &env);
 			ret = env->lookup(e->str);
 			if (!ret) {
+				// printf("lookup %s in env0\n", e->str.c_str());
 				ret = env0->lookup(e->str);
 				if (!ret) {
 					printf("undefined variable %s\n", e->str.c_str());
@@ -350,11 +383,19 @@ expr_t *interp(expr_t *e, env_t *env)
 			// printf("lambda (%s)\n", e->name->str);
 			e->env = env;
 			return e;
-		case EXPR::LET:
+		case EXPR::DEFINE:
 			// printf("let (%s)\n", e->name->str.c_str());
 			v1 = interp(e->value, env);
 			env0 = env->extend(e->name->str, v1);
 			return v1;
+		case EXPR::LET:
+			new_env = env;
+			for (auto p : e->pairs) {
+				v1 = interp(&p.second, env);
+				// printf("extend %s\n", p.first.str.c_str());
+				new_env = new_env->extend(p.first.str, v1);
+			}
+			return interp(e->body, new_env);
 		case EXPR::ARITH:
 			// printf("v1:%d, v2:%d in env(%ld)\n",
 			// 	e->value->type, e->value2->type, env);
@@ -405,7 +446,7 @@ expr_t *interp(expr_t *e, env_t *env)
 			delete new_env;
 			return ret;
 		case EXPR::COND:
-			for (auto cp : e->condpair) {
+			for (auto cp : e->pairs) {
 				v1 = interp(&cp.first, env);
 				if (v1->ivalue) {
 					return interp(&cp.second, env);
@@ -428,15 +469,20 @@ int main(int argc, char const *argv[])
 	while (ifs.good()) {
 		// 补全括号规则
 		// 如果某一行最后一个字符是左括号
-		// 将此行的换行符换成左括号
 		// 将接下来的每一行都用括号括起来
-		// 直到遇见一个行首即为右括号的行
+		// 直到遇见一个行首即为右括号且行末不是左括号的行
 		getline(ifs, code);
 		if (!code.empty() && code[code.size()-1] == '(') {
 			string more_code;
 			while (ifs.good()) {
 				getline(ifs, more_code);
-				if (!more_code.empty() && more_code[0] == ')') {
+				if (more_code.empty())
+				{
+					continue;
+				}
+				if (more_code[0] == ')' && more_code[more_code.size()-1] == '(') {
+					code += more_code;
+				} else if (!more_code.empty() && more_code[0] == ')') {
 					code += more_code;
 					break;
 				} else {
@@ -456,6 +502,8 @@ int main(int argc, char const *argv[])
 			printf("=> %d", e->ivalue);
 		} else if (e->type == BOOL) {
 			printf("=> %s\n", e->ivalue ? "true" : "false");
+		} else if (e->type == LET) {
+			printf("bind %s\n", e->name->str);
 		}
 		printf("\n");
 	}

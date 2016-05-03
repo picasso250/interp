@@ -6,14 +6,19 @@
 
 (\ x . 2 * x) 3
 
-x : 2
-f : \ y . x * y
-f 3
+let (
+	x : 2
+) let (
+	f : \ y . x * y
+) f 3
 
-x : 2
-f : \ y . x * y
-x:4
-f 3
+let (
+	x : 2
+) let (
+	f : \ y . x * y
+) let (
+	x:4
+) f 3
 
 fact : \n. cond (
 	(n=0)? 1
