@@ -48,17 +48,16 @@ struct env_t
 		child->parent = this;
 		return child;
 	}
-	void print()
-	{}
 };
 
 // function call: (func value)
-// lambda: (lambda (name) body)
-// let: (let (name value) body)
-// arithmetic: (name value value2)
+// lambda: (\ name . body)
+// let: (let (pairs) body)
+// arithmetic: (value name value2)
+// compare: (value name value2)
+// cond: (cond (pairs))
 struct expr_t
 {
-	// 0 function call, 1 int, 2 lambda, 3 let, 4 name, 5 value, 6 arithmetic
 	int type;
 	int ivalue; // for int
 	string str;  // for name
