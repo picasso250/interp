@@ -1,0 +1,20 @@
+nil
+1 . nil
+2 . 1 . nil
+x : 2 . nil
+y : 1.x
+head x
+rest x
+null x
+null nil
+pair x
+pair 1
+
+len: \xs.cond (
+	(null xs)? 0
+	(pair xs)? 1+(len(rest xs))
+	else? 1
+)
+list: 1 . 2 . 3 . 4 . nil
+len list
+
