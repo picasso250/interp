@@ -18,12 +18,3 @@ Y: \f. let (
 ) q q
 
 (Y h) 5
-
-; let () q q
-; q: \k. h (\x. (k k) x)
-; h (\x. (q q) x) ; f
-; (\n. cond ()) 5
-; cond ()
-; 5 * ((\x. (q q) x) (4))
-; (\x. (q q) x) 4
-; (q q)

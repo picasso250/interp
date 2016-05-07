@@ -70,10 +70,10 @@ struct expr_t
 
 	env_t *env; // only for lambda
 
-	vector<pair<expr_t,expr_t>> pairs; // for cond and let
+	vector<pair<expr_t*,expr_t*>> pairs; // for cond and let
 
-	expr_t() {}
-	expr_t(int type)
+	expr_t():name(NULL),func(NULL),value(NULL),body(NULL) {}
+	expr_t(int type):name(NULL),func(NULL),value(NULL),body(NULL)
 	{
 		this->type = type;
 	}
@@ -157,6 +157,7 @@ void print_lexer_tree(list_t list)
 
 // ==== parser ====
 
+void print_ast(expr_t *e);
 expr_t *make_name(string str)
 {
 	expr_t *atom;
@@ -208,8 +209,7 @@ expr_t *parser(list_t list)
 				// c ? r
 				t.list.erase(t.list.begin(), t.list.begin()+2);
 				auto r = parser(t);
-				ret->pairs.push_back(make_pair(*c, *r));
-				delete c; delete r;
+				ret->pairs.push_back(make_pair(c, r));
 			}
 			return ret;
 		}
@@ -235,12 +235,13 @@ expr_t *parser(list_t list)
 				ret->type = EXPR::LET;
 				for (auto t : second.list) {
 					assert(t.list[0].is_atom);
+					// printf("let %s\n", t.list[0].atom.c_str());
 					auto a = make_name(t.list[0].atom);
 					// a : e
 					t.list.erase(t.list.begin(), t.list.begin()+2);
 					auto e = parser(t);
-					ret->pairs.push_back(make_pair(*a, *e));
-					delete a; delete e;
+					ret->pairs.push_back(make_pair(a, e));
+					// can not delete here
 				}
 				list.list.erase(list.list.begin(), list.list.begin()+2);
 				ret->body = parser(list);
@@ -280,71 +281,73 @@ expr_t *parser(list_t list)
 	
 	return ret;
 }
-void print_ast(expr_t &e)
+void print_ast(expr_t *e)
 {
-	switch (e.type) {
+	switch (e->type) {
 		case EXPR::INT:
-			printf("%d", e.ivalue);
+			printf("%d", e->ivalue);
 			break;
 		case EXPR::BOOL:
-			printf("%s\n", e.ivalue ? "true" : "false");
+			printf("%s\n", e->ivalue ? "true" : "false");
 			break;
 		case EXPR::NAME:
-			printf("%s:%d", e.str.c_str(), e.type);
+			printf("%s:%d", e->str.c_str(), e->type);
 			break;
 		case EXPR::LAMBDA:
-			printf("LD(lambda (%s) ", e.name->str.c_str());
-			print_ast(*e.body);
+			printf("LD(lambda (%s) ", e->name->str.c_str());
+			print_ast(e->body);
 			printf(")\n");
 			break;
 		case EXPR::DEFINE:
-			printf("DF(%s ", e.name->str.c_str());
-			print_ast(*e.value);
+			printf("DF(%s ", e->name->str.c_str());
+			print_ast(e->value);
 			printf(")\n");
 			break;
 		case EXPR::LET:
 			printf("LT(\n");
-			for (auto p : e.pairs) {
-				printf("\t(");
-				print_ast(p.first);
+			for (auto i = e->pairs.begin(); i != e->pairs.end(); ++i)
+			{
+				printf("\t((%X)", i->first);
+				print_ast(i->first);
 				printf(":\t");
-				print_ast(p.second);
+				print_ast(i->second);
 				printf(")\n");
 			}
-			print_ast(*e.body);
+			print_ast(e->body);
 			printf(")\n");
 			break;
 		case EXPR::FUNC_CALL:
 			printf("FC(");
-			print_ast(*e.func);
+			print_ast(e->func);
 			printf(" ");
-			print_ast(*e.value);
+			print_ast(e->value);
 			printf(")\n");
 			break;
 		case EXPR::ARITH:
 			printf("AR(");
-			print_ast(*e.func);
+			print_ast(e->func);
 			printf(" ");
-			print_ast(*e.value);
+			print_ast(e->value);
 			printf(" ");
-			print_ast(*e.value2);
-			printf(")\n");
+			print_ast(e->value2);
+			printf(")");
 			break;
 		case EXPR::COMPARE:
 			printf("CP(");
-			print_ast(*e.func);
+			print_ast(e->func);
 			printf(" ");
-			print_ast(*e.value);
+			print_ast(e->value);
 			printf(" ");
-			print_ast(*e.value2);
+			print_ast(e->value2);
 			printf(")\n");
 			break;
 		case EXPR::COND:
 			printf("CD(\n");
-			for (auto cp : e.pairs) {
-				print_ast(cp.first);
+			for (auto i = e->pairs.begin(); i != e->pairs.end(); ++i)
+			{
+				print_ast(i->first);
 				printf("?\t");
-				print_ast(cp.second);
+				print_ast(i->second);
 				printf("\n");
 			}
 			printf(")\n");
@@ -390,9 +393,9 @@ expr_t *interp(expr_t *e, env_t *env)
 		case EXPR::LET:
 			new_env = env;
 			for (auto p : e->pairs) {
-				v1 = interp(&p.second, env);
+				v1 = interp(p.second, env);
 				// printf("extend %s\n", p.first.str.c_str());
-				new_env = new_env->extend(p.first.str, v1);
+				new_env = new_env->extend(p.first->str, v1);
 			}
 			return interp(e->body, new_env);
 		case EXPR::ARITH:
@@ -442,15 +445,13 @@ expr_t *interp(expr_t *e, env_t *env)
 			v1 = interp(e->func, env);
 			new_env = v1->env->extend(v1->name->str, v2);
 			ret = interp(v1->body, new_env);
-			delete new_env;
 			return ret;
 		case EXPR::COND:
 			for (auto cp : e->pairs) {
-				v1 = interp(&cp.first, env);
+				v1 = interp(cp.first, env);
 				if (v1->ivalue) {
-					return interp(&cp.second, env);
+					return interp(cp.second, env);
 				}
-				delete v1;
 			}
 			printf("cond all false\n");
 			exit(1);
@@ -463,7 +464,9 @@ int main(int argc, char const *argv[])
 	string code;
 	list_t list;
 	expr_t *e;
-	ifstream ifs("test.chr3", ifstream::in);
+	char const * file = "test.chr3";
+	if (argc >= 2) file = argv[1];
+	ifstream ifs(file, ifstream::in);
 	env0 = new env_t();
 	while (ifs.good()) {
 		// 补全括号规则
@@ -495,7 +498,7 @@ int main(int argc, char const *argv[])
 			continue;
 		// print_lexer_tree(list);
 		e = parser(list);
-		// print_ast(*e);
+		// print_ast(e);
 		e = interp(e, env0);
 		if (e->type == INT) {
 			printf("=> %d", e->ivalue);
