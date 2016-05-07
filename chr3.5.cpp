@@ -35,19 +35,18 @@ struct env_t
 	expr_t *value;
 	env_t *parent;
 
-	env_t():parent(NULL),value(NULL) {}
+	env_t(string n):name(n),parent(NULL),value(NULL) {}
 
 	expr_t *lookup(string name) {
-		assert(parent != this);
 		// cout<<"lookup "<<name<<", compare "<<this->name<<endl;
+		assert(parent != this);
 		if (this->name == name) return value;
 		if (parent == NULL) return NULL;
 		return parent->lookup(name);
 	}
 	env_t *extend(string name, expr_t *value)
 	{
-		env_t *child = new env_t();
-		child->name = name;
+		env_t *child = new env_t(name);
 		child->value = value;
 		child->parent = this;
 		return child;
@@ -403,10 +402,6 @@ expr_t *interp(expr_t *e, env_t *env)
 					return v2->left;
 				}
 				if (func_str == "rest") {
-					// printf("rest ");
-					// print_ast(*v2);
-					// printf(" is ");
-					// print_ast(*v2->right);
 					return v2->right;
 				}
 				if (func_str == "null") {
@@ -421,9 +416,12 @@ expr_t *interp(expr_t *e, env_t *env)
 				}
 			}
 			v1 = interp(e->func, env);
+			// printf("param %s = ", v1->name->str.c_str());
+			// print_ast(*v2);
+			// printf("\n");
 			new_env = v1->env->extend(v1->name->str, v2);
 			ret = interp(v1->body, new_env);
-			delete new_env;
+			// new_env could not be delete
 			return ret;
 		case EXPR::COND:
 			for (auto cp : e->pairs) {
@@ -452,8 +450,12 @@ int main(int argc, char const *argv[])
 	string code;
 	list_t list;
 	expr_t *e;
-	ifstream ifs("test.chr3.5", ifstream::in);
-	env0 = new env_t();
+	char const * file = "test.chr3.5";
+	if (argc >= 2) {
+		file = argv[1];
+	}
+	ifstream ifs(file, ifstream::in);
+	env0 = new env_t("");
 	while (ifs.good()) {
 		// 补全括号规则
 		// 如果某一行最后一个字符是左括号

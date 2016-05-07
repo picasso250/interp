@@ -1,0 +1,17 @@
+g: \fact. \n. cond(
+	(n=1)? 1
+	else ? n * ((fact fact) (n-1))
+)
+(g g) 5
+
+h: \f. \n. cond(
+	(n=1)? 1
+	else ? n * (f (n-1))
+)
+
+g: \fact. h (fact fact)
+
+
+
+(g g) 5
+

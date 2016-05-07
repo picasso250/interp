@@ -2,6 +2,7 @@
 
 ### 基本语法
 
+```
 arith_expr ::= int
              | aith_expr op arith_expr
 op         ::= + | - | * | /
@@ -20,6 +21,7 @@ cons      ::= "nil"
             | arith_expr . cons
 epxr ::= id | bool | (lambda) | (let_expr) | (call) | (cons)
        | (cond_expr) | (arith_expr) | (cond_expr)
+```
 
 每行一个 expr 或者 bind
 
