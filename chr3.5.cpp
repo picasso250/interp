@@ -7,6 +7,7 @@
 #include <istream>
 #include <fstream>
 #include <iostream>
+#include <memory>
 
 #include "lexer.h"
 
@@ -33,31 +34,33 @@ void print_ast(expr_t *e, bool in_list);
 struct env_t
 {
 	string name;
-	expr_t *value;
-	env_t *parent;
+	shared_ptr<expr_t> value;
+	shared_ptr<env_t> parent;
 
-	env_t(string n):name(n),parent(NULL),value(NULL) {}
+	env_t(string n):name(n) {}
 
-	expr_t *lookup(const string name) {
+	shared_ptr<expr_t> lookup(const string name) {
 		// cout<<"lookup "<<name<<", compare "<<this->name<<endl;
-		assert(parent != this);
+		// assert(parent != this);
 		if (this->name == name) {
 			// printf("%s = (%lu)", name.c_str(), value);
 			// print_ast(value, false);
 			// printf("\n");
 			return value;
 		}
-		if (parent == NULL) return NULL;
+		shared_ptr<expr_t> p;
+		if (parent.use_count() == 0) return p;
 		return parent->lookup(name);
 	}
-	env_t *extend(string name, expr_t *value)
+	shared_ptr<env_t> extend(string name, shared_ptr<expr_t> value, shared_ptr<env_t> parent)
 	{
 		// printf("extend %s\n", name.c_str());
-		env_t *child = new env_t(name);
+		auto child = make_shared<env_t>(name);
 		child->value = value;
-		child->parent = this;
+		child->parent = parent;
 		return child;
 	}
+	// ~env_t() {cout<<"env of "<<name<<" de!"<<endl;}
 };
 
 // function call: (func value)
@@ -72,18 +75,18 @@ struct expr_t
 	int ivalue; // for int
 	string str;  // for name
 
-	expr_t *name;
-	expr_t *func;
-	expr_t *value;
-	expr_t *value2; // only for + - * /
-	expr_t *body;
+	shared_ptr<expr_t> name;
+	shared_ptr<expr_t> func;
+	shared_ptr<expr_t> value;
+	shared_ptr<expr_t> value2; // only for + - * /
+	shared_ptr<expr_t> body;
 
-	expr_t *left;
-	expr_t *right;
+	shared_ptr<expr_t> left;
+	shared_ptr<expr_t> right;
 
-	env_t *env; // only for lambda
+	shared_ptr<env_t> env; // only for lambda
 
-	vector<pair<expr_t*,expr_t*>> pairs; // for cond and let
+	vector<pair<shared_ptr<expr_t>,shared_ptr<expr_t>>> pairs; // for cond and let
 
 	expr_t() {}
 	expr_t(int t):type(t) {
@@ -92,47 +95,45 @@ struct expr_t
 
 // ==== parser ====
 
-expr_t *make_name(string str)
+shared_ptr<expr_t> make_name(string str)
 {
-	expr_t *atom;
 	if (str == "true" || str == "else") {
-		atom = new expr_t(BOOL);
+		auto atom = make_shared<expr_t>(BOOL);
 		atom->ivalue = 1;
 		return atom;
 	}
 	if (str == "false") {
-		atom = new expr_t(BOOL);
+		auto atom = make_shared<expr_t>(BOOL);
 		atom->ivalue = 1;
 		return atom;
 	}
-	atom = new expr_t(NAME);
+	auto atom = make_shared<expr_t>(NAME);
 	atom->str = str;
 	return atom;
 }
-expr_t *parse_atom(string str)
+shared_ptr<expr_t> parse_atom(string str)
 {
 	// printf("parse_atom %s\n", str.c_str());
 	if (isdigit(str[0])) {
-		expr_t *atom = new expr_t(INT);
+		auto atom = make_shared<expr_t>(INT);
 		atom->ivalue = stoi(str);
 		// printf("int: %d\n", atom->ivalue);
 		return atom;
 	}
 	if (str == "nil") {
 		// printf("build nil\n");
-		expr_t *atom = new expr_t(NIL);
+		auto atom = make_shared<expr_t>(NIL);
 		atom->ivalue = 0;
 		return atom;
 	}
 	return make_name(str);
 }
-expr_t *parser(list_t list)
+shared_ptr<expr_t> parser(list_t list)
 {
 	if (list.is_atom) {
 		// printf("atom\n");
 		return parse_atom(list.atom);
 	}
-	expr_t *ret   = NULL;
 	int size = list.list.size();
 	// printf("size (%d)\n", size);
 	if (size == 1) {
@@ -142,7 +143,7 @@ expr_t *parser(list_t list)
 		list_t second = list.list[1];
 		if (first.is_atom && first.atom == "cond") {
 			assert(!second.is_atom);
-			ret = new expr_t(EXPR::COND);
+			auto ret = make_shared<expr_t>(EXPR::COND);
 			for (auto t : second.list) {
 				auto c = parser(t.list[0]);
 				// c ? r
@@ -153,7 +154,7 @@ expr_t *parser(list_t list)
 			return ret;
 		}
 		// printf("FUNC_CALL (%d)\n", list.size);
-		ret = new expr_t(EXPR::FUNC_CALL);
+		auto ret = make_shared<expr_t>(EXPR::FUNC_CALL);
 		ret->func = parser(list.list[0]);
 		ret->value = parser(list.list[1]);
 		return ret;
@@ -163,7 +164,7 @@ expr_t *parser(list_t list)
 		if (first.is_atom) {
 			if (first.atom == "\\") {
 				// cout<<"lambda"<<endl;
-				ret = new expr_t(EXPR::LAMBDA);
+				auto ret = make_shared<expr_t>(EXPR::LAMBDA);
 				ret->name = make_name(list.list[1].atom);
 				// printf("name is %s\n", ret->name.str);
 				list.list.erase(list.list.begin(), list.list.begin()+3);
@@ -171,7 +172,7 @@ expr_t *parser(list_t list)
 				return ret;
 			}
 			if (first.atom == "let") {
-				ret = new expr_t(EXPR::LET);
+				auto ret = make_shared<expr_t>(EXPR::LET);
 				for (auto t : second.list) {
 					assert(t.list[0].is_atom);
 					auto a = make_name(t.list[0].atom);
@@ -189,7 +190,7 @@ expr_t *parser(list_t list)
 		if (second.is_atom) {
 			if (second.atom == ".") {
 				list_t third = list.list[2];
-				ret = new expr_t(EXPR::PAIR);
+				auto ret = make_shared<expr_t>(EXPR::PAIR);
 				ret->left = parser(first);
 				list.list.erase(list.list.begin(), list.list.begin()+2);
 				ret->right = parser(list);
@@ -197,7 +198,7 @@ expr_t *parser(list_t list)
 			}
 			if (second.atom == ":") {
 				// cout<<"="<<"LET"<<endl;
-				ret = new expr_t(EXPR::DEFINE);
+				auto ret = make_shared<expr_t>(EXPR::DEFINE);
 				ret->name = make_name(list.list[0].atom);
 				list.list.erase(list.list.begin(), list.list.begin()+2);
 				ret->value = parser(list);
@@ -206,14 +207,14 @@ expr_t *parser(list_t list)
 			} else if (second.atom.size() == 1) {
 				char op = second.atom[0];
 				if (op == '+' || op == '-' || op == '*' || op == '/') {
-					ret = new expr_t(EXPR::ARITH);
+					auto ret = make_shared<expr_t>(EXPR::ARITH);
 					ret->func = parser(list.list[1]);
 					ret->value = parser(list.list[0]);
 					ret->value2 = parser(list.list[2]);
 					return ret;
 				}
 				if (op == '>' || op == '<' || op == '=') {
-					ret = new expr_t(EXPR::COMPARE);
+					auto ret = make_shared<expr_t>(EXPR::COMPARE);
 					ret->func = parser(list.list[1]);
 					ret->value = parser(list.list[0]);
 					ret->value2 = parser(list.list[2]);
@@ -222,9 +223,8 @@ expr_t *parser(list_t list)
 			}
 		}
 	}
-	return ret;
 }
-void print_ast(expr_t *e, bool in_list = false)
+void print_ast(shared_ptr<expr_t> e, bool in_list = false)
 {
 	// printf("(0x%lx) type: %d\n", e, e->type);
 	assert(e->type >= 0);
@@ -318,13 +318,13 @@ void print_ast(expr_t *e, bool in_list = false)
 
 // ==== interpreter ====
 
-env_t *env0;
+shared_ptr<env_t> env0;
 
-expr_t *interp(expr_t *e, env_t *env)
+shared_ptr<expr_t> interp(shared_ptr<expr_t> e, shared_ptr<env_t> env)
 {
-	env_t *new_env;
-	expr_t *ret;
-	expr_t *v1, *v2;
+	shared_ptr<env_t> new_env;
+	shared_ptr<expr_t> ret;
+	shared_ptr<expr_t> v1, v2;
 	int v;
 	switch (e->type) {
 		case EXPR::NAME:
@@ -351,14 +351,13 @@ expr_t *interp(expr_t *e, env_t *env)
 		case EXPR::DEFINE:
 			// printf("let (%s)\n", e->name->str.c_str());
 			v1 = interp(e->value, env);
-			env0 = env->extend(e->name->str, v1);
+			env0 = env->extend(e->name->str, v1, env);
 			return v1;
 		case EXPR::LET:
 			new_env = env;
 			for (auto p : e->pairs) {
 				v1 = interp(p.second, env);
-				// printf("let extend %s\n", p.first->str.c_str());
-				new_env = new_env->extend(p.first->str, v1);
+				new_env = new_env->extend(p.first->str, v1, new_env);
 			}
 			return interp(e->body, new_env);
 		case EXPR::ARITH:
@@ -366,7 +365,7 @@ expr_t *interp(expr_t *e, env_t *env)
 			// 	e->value->type, e->value2->type, env);
 			v1 = interp(e->value, env);
 			v2 = interp(e->value2, env);
-			ret = new expr_t(INT);
+			ret = make_shared<expr_t>(INT);
 			assert(e->func->type == NAME);
 			switch (e->func->str[0]) {
 				case '+':
@@ -387,7 +386,7 @@ expr_t *interp(expr_t *e, env_t *env)
 		case EXPR::COMPARE:
 			v1 = interp(e->value, env);
 			v2 = interp(e->value2, env);
-			ret = new expr_t(BOOL);
+			ret = make_shared<expr_t>(BOOL);
 			assert(e->func->type == NAME);
 			switch (e->func->str[0]) {
 				case '=':
@@ -414,12 +413,12 @@ expr_t *interp(expr_t *e, env_t *env)
 					return v2->right;
 				}
 				if (func_str == "null") {
-					ret = new expr_t(BOOL);
+					ret = make_shared<expr_t>(BOOL);
 					ret->ivalue = v2->type == NIL ? 1 : 0;
 					return ret;
 				}
 				if (func_str == "pair") {
-					ret = new expr_t(BOOL);
+					ret = make_shared<expr_t>(BOOL);
 					ret->ivalue = v2->type == PAIR ? 1 : 0;
 					return ret;
 				}
@@ -430,7 +429,7 @@ expr_t *interp(expr_t *e, env_t *env)
 			// printf(" param %s = ", v1->name->str.c_str());
 			// print_ast(v2);
 			// printf("\n");
-			new_env = v1->env->extend(v1->name->str, v2);
+			new_env = v1->env->extend(v1->name->str, v2, v1->env);
 			ret = interp(v1->body, new_env);
 			// new_env could not be delete
 			return ret;
@@ -448,7 +447,7 @@ expr_t *interp(expr_t *e, env_t *env)
 			// make a pair
 			v1 = interp(e->left, env);
 			v2 = interp(e->right, env);
-			ret = new expr_t(PAIR);
+			ret = make_shared<expr_t>(PAIR);
 			ret->left = v1;
 			ret->right = v2;
 			return ret;
@@ -459,13 +458,13 @@ int main(int argc, char const *argv[])
 {
 	string code;
 	list_t list;
-	expr_t *e;
+	shared_ptr<expr_t> e;
 	char const * file = "test.chr3.5";
 	if (argc >= 2) {
 		file = argv[1];
 	}
 	ifstream ifs(file, ifstream::in);
-	env0 = new env_t("");
+	env0 = make_shared<env_t>("");
 	while (ifs.good()) {
 		// 补全括号规则
 		// 如果某一行最后一个字符是左括号
