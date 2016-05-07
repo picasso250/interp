@@ -30,7 +30,6 @@ enum EXPR {
 
 struct expr_t;
 struct env_entry_t;
-void print_ast(expr_t *e, bool in_list);
 struct env_t
 {
 	string name;
