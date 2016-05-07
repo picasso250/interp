@@ -13,15 +13,15 @@
 using namespace std;
 
 enum EXPR {
-	INT,
+	INT, // 0
 	BOOL,
-	LAMBDA,
+	LAMBDA, // 2
 	NIL,
 	PAIR,
-	FUNC_CALL,
+	FUNC_CALL, // 5
 	LET,
 	DEFINE,
-	NAME,
+	NAME, // 8
 	ARITH,
 	COND,
 	COMPARE,
@@ -29,6 +29,7 @@ enum EXPR {
 
 struct expr_t;
 struct env_entry_t;
+void print_ast(expr_t *e, bool in_list);
 struct env_t
 {
 	string name;
@@ -37,15 +38,21 @@ struct env_t
 
 	env_t(string n):name(n),parent(NULL),value(NULL) {}
 
-	expr_t *lookup(string name) {
+	expr_t *lookup(const string name) {
 		// cout<<"lookup "<<name<<", compare "<<this->name<<endl;
 		assert(parent != this);
-		if (this->name == name) return value;
+		if (this->name == name) {
+			// printf("%s = (%lu)", name.c_str(), value);
+			// print_ast(value, false);
+			// printf("\n");
+			return value;
+		}
 		if (parent == NULL) return NULL;
 		return parent->lookup(name);
 	}
 	env_t *extend(string name, expr_t *value)
 	{
+		// printf("extend %s\n", name.c_str());
 		env_t *child = new env_t(name);
 		child->value = value;
 		child->parent = this;
@@ -76,7 +83,7 @@ struct expr_t
 
 	env_t *env; // only for lambda
 
-	vector<pair<expr_t,expr_t>> pairs; // for cond and let
+	vector<pair<expr_t*,expr_t*>> pairs; // for cond and let
 
 	expr_t() {}
 	expr_t(int t):type(t) {
@@ -125,7 +132,7 @@ expr_t *parser(list_t list)
 		// printf("atom\n");
 		return parse_atom(list.atom);
 	}
-	expr_t *ret   = new expr_t();
+	expr_t *ret   = NULL;
 	int size = list.list.size();
 	// printf("size (%d)\n", size);
 	if (size == 1) {
@@ -135,19 +142,18 @@ expr_t *parser(list_t list)
 		list_t second = list.list[1];
 		if (first.is_atom && first.atom == "cond") {
 			assert(!second.is_atom);
-			ret->type = EXPR::COND;
+			ret = new expr_t(EXPR::COND);
 			for (auto t : second.list) {
 				auto c = parser(t.list[0]);
 				// c ? r
 				t.list.erase(t.list.begin(), t.list.begin()+2);
 				auto r = parser(t);
-				ret->pairs.push_back(make_pair(*c, *r));
-				delete c; delete r;
+				ret->pairs.push_back(make_pair(c, r));
 			}
 			return ret;
 		}
 		// printf("FUNC_CALL (%d)\n", list.size);
-		ret->type = EXPR::FUNC_CALL;
+		ret = new expr_t(EXPR::FUNC_CALL);
 		ret->func = parser(list.list[0]);
 		ret->value = parser(list.list[1]);
 		return ret;
@@ -157,7 +163,7 @@ expr_t *parser(list_t list)
 		if (first.is_atom) {
 			if (first.atom == "\\") {
 				// cout<<"lambda"<<endl;
-				ret->type = EXPR::LAMBDA;
+				ret = new expr_t(EXPR::LAMBDA);
 				ret->name = make_name(list.list[1].atom);
 				// printf("name is %s\n", ret->name.str);
 				list.list.erase(list.list.begin(), list.list.begin()+3);
@@ -165,15 +171,14 @@ expr_t *parser(list_t list)
 				return ret;
 			}
 			if (first.atom == "let") {
-				ret->type = EXPR::LET;
+				ret = new expr_t(EXPR::LET);
 				for (auto t : second.list) {
 					assert(t.list[0].is_atom);
 					auto a = make_name(t.list[0].atom);
 					// a : e
 					t.list.erase(t.list.begin(), t.list.begin()+2);
 					auto e = parser(t);
-					ret->pairs.push_back(make_pair(*a, *e));
-					delete a; delete e;
+					ret->pairs.push_back(make_pair(a, e));
 				}
 				list.list.erase(list.list.begin(), list.list.begin()+2);
 				ret->body = parser(list);
@@ -184,7 +189,7 @@ expr_t *parser(list_t list)
 		if (second.is_atom) {
 			if (second.atom == ".") {
 				list_t third = list.list[2];
-				ret->type = PAIR;
+				ret = new expr_t(EXPR::PAIR);
 				ret->left = parser(first);
 				list.list.erase(list.list.begin(), list.list.begin()+2);
 				ret->right = parser(list);
@@ -192,7 +197,7 @@ expr_t *parser(list_t list)
 			}
 			if (second.atom == ":") {
 				// cout<<"="<<"LET"<<endl;
-				ret->type = EXPR::DEFINE;
+				ret = new expr_t(EXPR::DEFINE);
 				ret->name = make_name(list.list[0].atom);
 				list.list.erase(list.list.begin(), list.list.begin()+2);
 				ret->value = parser(list);
@@ -201,14 +206,14 @@ expr_t *parser(list_t list)
 			} else if (second.atom.size() == 1) {
 				char op = second.atom[0];
 				if (op == '+' || op == '-' || op == '*' || op == '/') {
-					ret->type = EXPR::ARITH;
+					ret = new expr_t(EXPR::ARITH);
 					ret->func = parser(list.list[1]);
 					ret->value = parser(list.list[0]);
 					ret->value2 = parser(list.list[2]);
 					return ret;
 				}
 				if (op == '>' || op == '<' || op == '=') {
-					ret->type = EXPR::COMPARE;
+					ret = new expr_t(EXPR::COMPARE);
 					ret->func = parser(list.list[1]);
 					ret->value = parser(list.list[0]);
 					ret->value2 = parser(list.list[2]);
@@ -219,88 +224,92 @@ expr_t *parser(list_t list)
 	}
 	return ret;
 }
-void print_ast(expr_t &e, bool in_list = false)
+void print_ast(expr_t *e, bool in_list = false)
 {
-	switch (e.type) {
+	// printf("(0x%lx) type: %d\n", e, e->type);
+	assert(e->type >= 0);
+	switch (e->type) {
 		case EXPR::NIL:
 			printf("nil");
 			break;
 		case EXPR::INT:
-			printf("%d", e.ivalue);
+			printf("%d", e->ivalue);
 			break;
 		case EXPR::BOOL:
-			printf("%s\n", e.ivalue ? "true" : "false");
+			printf("%s", e->ivalue ? "true" : "false");
 			break;
 		case EXPR::PAIR:
 			if (!in_list) printf("[ ");
-			print_ast(*e.left);
-			if (e.right->type != NIL) {
-				if (e.right->type == PAIR) {
+			print_ast(e->left);
+			if (e->right->type != NIL) {
+				if (e->right->type == PAIR) {
 					printf(" ");
-					print_ast(*e.right, true);
+					print_ast(e->right, true);
 				} else {
 					printf(" . ");
-					print_ast(*e.right);
+					print_ast(e->right);
 				}
 			}
 			if (!in_list) printf(" ]\n");
 			break;
 		case EXPR::NAME:
-			printf("%s:%d", e.str.c_str(), e.type);
+			printf("%s:%d", e->str.c_str(), e->type);
 			break;
 		case EXPR::LAMBDA:
-			printf("LD(lambda (%s) ", e.name->str.c_str());
-			print_ast(*e.body);
-			printf(")\n");
+			printf("LD(lambda (%s) ", e->name->str.c_str());
+			print_ast(e->body);
+			printf(")");
 			break;
 		case EXPR::DEFINE:
-			printf("DF(%s ", e.name->str.c_str());
-			print_ast(*e.value);
+			printf("DF(%s ", e->name->str.c_str());
+			print_ast(e->value);
 			printf(")\n");
 			break;
 		case EXPR::LET:
 			printf("LT(\n");
-			for (auto p : e.pairs) {
+			for (auto i = e->pairs.begin(); i != e->pairs.end(); ++i)
+			{
 				printf("\t(");
-				print_ast(p.first);
+				print_ast(i->first);
 				printf(":\t");
-				print_ast(p.second);
+				print_ast(i->second);
 				printf(")\n");
 			}
-			print_ast(*e.body);
+			print_ast(e->body);
 			printf(")\n");
 			break;
 		case EXPR::FUNC_CALL:
 			printf("FC(");
-			print_ast(*e.func);
+			print_ast(e->func);
 			printf(" ");
-			print_ast(*e.value);
-			printf(")\n");
+			print_ast(e->value);
+			printf(")");
 			break;
 		case EXPR::ARITH:
 			printf("AR(");
-			print_ast(*e.func);
+			print_ast(e->func);
 			printf(" ");
-			print_ast(*e.value);
+			print_ast(e->value);
 			printf(" ");
-			print_ast(*e.value2);
-			printf(")\n");
+			print_ast(e->value2);
+			printf(")");
 			break;
 		case EXPR::COMPARE:
 			printf("CP(");
-			print_ast(*e.func);
+			print_ast(e->func);
 			printf(" ");
-			print_ast(*e.value);
+			print_ast(e->value);
 			printf(" ");
-			print_ast(*e.value2);
-			printf(")\n");
+			print_ast(e->value2);
+			printf(")");
 			break;
 		case EXPR::COND:
 			printf("CD(\n");
-			for (auto cp : e.pairs) {
-				print_ast(cp.first);
+			for (auto i = e->pairs.begin(); i != e->pairs.end(); ++i)
+			{
+				print_ast(i->first);
 				printf("?\t");
-				print_ast(cp.second);
+				print_ast(i->second);
 				printf("\n");
 			}
 			printf(")\n");
@@ -347,9 +356,9 @@ expr_t *interp(expr_t *e, env_t *env)
 		case EXPR::LET:
 			new_env = env;
 			for (auto p : e->pairs) {
-				v1 = interp(&p.second, env);
-				// printf("extend %s\n", p.first.str.c_str());
-				new_env = new_env->extend(p.first.str, v1);
+				v1 = interp(p.second, env);
+				// printf("let extend %s\n", p.first->str.c_str());
+				new_env = new_env->extend(p.first->str, v1);
 			}
 			return interp(e->body, new_env);
 		case EXPR::ARITH:
@@ -416,8 +425,10 @@ expr_t *interp(expr_t *e, env_t *env)
 				}
 			}
 			v1 = interp(e->func, env);
-			// printf("param %s = ", v1->name->str.c_str());
-			// print_ast(*v2);
+			// printf("FC body ");
+			// print_ast(v1->body);
+			// printf(" param %s = ", v1->name->str.c_str());
+			// print_ast(v2);
 			// printf("\n");
 			new_env = v1->env->extend(v1->name->str, v2);
 			ret = interp(v1->body, new_env);
@@ -425,11 +436,10 @@ expr_t *interp(expr_t *e, env_t *env)
 			return ret;
 		case EXPR::COND:
 			for (auto cp : e->pairs) {
-				v1 = interp(&cp.first, env);
+				v1 = interp(cp.first, env);
 				if (v1->ivalue) {
-					return interp(&cp.second, env);
+					return interp(cp.second, env);
 				}
-				delete v1;
 			}
 			printf("cond all false\n");
 			exit(1);
@@ -481,15 +491,17 @@ int main(int argc, char const *argv[])
 			}
 		}
 		cout << "> " << code << endl;
+		if (code.size() == 0) continue;
+		if (code[0] == ';') continue;
 		list = lexer(code.c_str());
 		if (!list.is_atom && list.list.empty())
 			continue;
 		// print_lexer_tree(list);
 		e = parser(list);
-		// print_ast(*e);
+		// print_ast(e);
 		e = interp(e, env0);
 		printf("==> ");
-		print_ast(*e);
+		print_ast(e);
 		printf("\n");
 	}
 }
